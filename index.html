@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>地震履歴 v1.1.1</title>
+
+<style>
+:root {
+  --rows: 8;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+}
+
+/* コンテナ（外枠） */
+#list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  font-family: sans-serif;
+
+  border: 3px solid black;
+  box-sizing: border-box;
+}
+
+/* 各行 */
+.item {
+  display: grid;
+  grid-template-columns: 70px 80px 1fr 100px;
+  align-items: stretch;
+  padding: 4px;
+  box-sizing: border-box;
+  border-bottom: 1.5px solid black;
+  background: rgb(50,49,49);/*235,235,235*/
+}
+
+.header {
+  height: calc(100% / (var(--rows) + 0.5) * 0.4);
+  background: rgb(0,0,0);
+  color: white;
+  font-weight: bold;
+
+  padding: 0; /* ←これ追加（余白消す） */
+}
+
+.header-title {
+  grid-column: 1 / 5;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin: 0;  /* 念のため */
+  padding: 0; /* 念のため */
+}
+
+/* 最上段のフォント全体を少し大きく */
+.item:nth-child(2) {
+  font-size: 1.15em;
+}
+
+/* 最後の行 */
+.item:last-child {
+  border-bottom: none;
+}
+
+/* 高さ制御 */
+/* 通常行 */
+.item:not(:first-child) {
+  height: calc(100% / (var(--rows) + 0.5));
+}
+
+/* 2段目だけ上書き（←これを後に書く） */
+.item:nth-child(2) {
+  height: calc(100% / (var(--rows) + 0.5) * 1.5);
+}
+
+/* ←縦線削除（ここ重要） */
+/* .scale, .info の border-right を削除 */
+
+/* 列配置 */
+.scale {
+  grid-column: 1;
+  font-size: 1.6em;
+  text-align: center;
+  font-weight: bold;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  height: 100%; /* ← これも重要 */
+}
+
+/* 震度ごとの色 */
+.s1 { background: rgb(242,242,255); color: black; }
+.s2 { background: rgb(0,170,255); color: white; }
+.s3 { background: rgb(0,65,255); color: white; }
+.s4 { background: rgb(250,230,150); color: black; }
+.s5w { background: rgb(255,230,0); color: black; }
+.s5s { background: rgb(255,153,0); color: white; }
+.s6w { background: rgb(255,40,0); color: white; }
+.s6s { background: rgb(165,0,33); color: white; }
+.s7 { background: rgb(180,0,104); color: white; }
+
+/* その他（不明など） */
+.scale:not([class*="s"]) {
+  background: gray;
+  color: white;
+}
+
+.info {
+  grid-column: 2 / 4;
+  padding-left: 8px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 1.1;
+  display: flex;            /* ←追加 */
+  flex-direction: column;   /* ←追加 */
+  justify-content: center;  /* ←これが縦中央 */
+  color: white;
+}
+
+.place {
+  font-size: 1.25em;
+  font-weight: bold;
+}
+
+.sub {
+  grid-column: 4;
+  font-size: 0.8em;
+  text-align: right;
+  white-space: nowrap;
+
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: white;
+}
+
+#errorBox {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+
+  background: rgb(20,20,20);
+  color: white;
+
+  font-size: 14px;
+  font-family: monospace;
+
+  padding: 12px;
+  box-sizing: border-box;
+
+  display: none;
+  align-items: center;
+  justify-content: flex-start;
+
+  white-space: pre-wrap;
+  word-break: break-all;   /* ←これ重要（強制折り返し） */
+  overflow: hidden;        /* ←スクロール禁止 */
+
+  z-index: 9999;
+}
+</style>
+</head>
+
+<body>
+
+<div id="errorBox"></div><div id="list"></div>
+
+<script>
+const MAX_ITEMS = 8;
+document.documentElement.style.setProperty("--rows", MAX_ITEMS);
+let currentItems = MAX_ITEMS;
+let latestData = [];
+
+function formatScale(s) {
+  const map = {
+    10:"1",20:"2",30:"3",40:"4",
+    45:"5-",50:"5+",55:"6-",60:"6+",70:"7"
+  };
+  return map[s] || "";
+}
+
+function getScaleClass(s) {
+  const map = {
+    10:"s1",20:"s2",30:"s3",40:"s4",
+    45:"s5w",50:"s5s",55:"s6w",60:"s6s",70:"s7"
+  };
+  return map[s] || "";
+}
+
+function formatTime(t) {
+  const d = new Date(t);
+
+  const yyyy = d.getFullYear();
+  const MM = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const HH = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+
+  return `${yyyy}/${MM}/${dd} ${HH}:${mm}`;
+}
+
+function formatTimeSplit(t) {
+  const d = new Date(t);
+
+  const yyyy = d.getFullYear();
+  const MM = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const HH = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+
+  return `${yyyy}/${MM}/${dd}<br>${HH}:${mm}`;
+}
+
+function formatDepth(d) {
+  if (d === -1) return "不明";
+  if (d === 0) return "ごく浅い";
+  return `${d}km`;
+}
+
+function formatMagnitude(m) {
+  if (m == null || m === -1) return "不明";
+  return `M${Number(m).toFixed(1)}`;
+}
+
+async function updateEarthquakes() {
+  try {
+    const res = await fetch("https://api.p2pquake.net/v2/history?codes=551&limit=50")
+    //const res = await fetch("https://api.p2pquake.net/v2/jma/quake?limit=50&offset=110&order=-1&since_date=20240101&until_date=20240101");
+ 
+    const data = await res.json();
+
+    latestData = data; // ←追加
+    render();
+
+  } catch (err) {
+    showError(err);
+  }
+}
+
+function render() {
+  const list = latestData;
+
+  const container = document.getElementById("list");
+  container.innerHTML = "";
+
+  list.sort((a, b) => {
+    return new Date(b.earthquake.time) - new Date(a.earthquake.time);
+  });
+
+  const header = document.createElement("div");
+  header.className = "item header";
+  header.innerHTML = `<div class="header-title">地震履歴</div>`;
+  container.appendChild(header);
+
+  let count = 0;
+
+  for (const eq of list) {
+
+    if (
+      eq.issue.type !== "DetailScale" &&
+      eq.issue.type !== "Foreign"
+    ) continue;
+
+    const isFirst = count === 0;
+
+    const div = document.createElement("div");
+    div.className = "item";
+
+    div.innerHTML = `
+      <div class="scale ${getScaleClass(eq.earthquake.maxScale)}">
+        ${formatScale(eq.earthquake.maxScale)}
+      </div>
+      <div class="info">
+        ${isFirst ? formatTimeSplit(eq.earthquake.time) : formatTime(eq.earthquake.time)}<br>
+        <span class="place">${eq.earthquake.hypocenter.name}</span>
+      </div>
+      <div class="sub">
+        ${formatMagnitude(eq.earthquake.hypocenter.magnitude)}<br>
+        深さ ${formatDepth(eq.earthquake.hypocenter.depth)}
+      </div>
+    `;
+
+    container.appendChild(div);
+
+    count++;
+    if (count >= currentItems) break; // ←ここ変更
+  }
+}
+
+updateEarthquakes();
+let resizeTimer;
+window.addEventListener("resize", () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(adjustItems, 50);
+});
+
+function adjustItems() {
+  const container = document.getElementById("list");
+
+  // 減らす（はみ出さなくなるまで）
+  while (
+    container.scrollHeight > container.clientHeight &&
+    currentItems > 1
+  ) {
+    currentItems--;
+    document.documentElement.style.setProperty("--rows", currentItems);
+    render();
+  }
+
+  // 増やす（余裕あるなら）
+  while (
+    container.scrollHeight <= container.clientHeight &&
+    currentItems < MAX_ITEMS
+  ) {
+    currentItems++;
+    document.documentElement.style.setProperty("--rows", currentItems);
+    render();
+
+    // 増やしすぎてはみ出したら戻す
+    if (container.scrollHeight > container.clientHeight) {
+      currentItems--;
+      document.documentElement.style.setProperty("--rows", currentItems);
+      render();
+      break;
+    }
+  }
+}
+
+function showError(err) {
+  const box = document.getElementById("errorBox");
+  box.style.display = "block";
+
+  box.textContent =
+    "=== ERROR ===\n\n" +
+    (err?.message || err) + "\n\n\n" +
+    "Stack:\n\n" + (err?.stack || "なし");
+}
+</script>
+
+</body>
+</html>
