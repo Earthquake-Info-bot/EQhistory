@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>T地震履歴 v1.1.4</title>
+<title>地震履歴 v1.1.4</title>
 
 <style>
 :root {
@@ -234,8 +234,8 @@ function formatMagnitude(m) {
 
 async function updateEarthquakes() {
   try {
-    //const res = await fetch("https://api.p2pquake.net/v2/history?codes=551&limit=50");
-    const res = await fetch("https://api-v2-sandbox.p2pquake.net/v2/history?codes=551&limit=50");
+    const res = await fetch("https://api.p2pquake.net/v2/history?codes=551&limit=50");
+    //const res = await fetch("https://api-v2-sandbox.p2pquake.net/v2/history?codes=551&limit=50");
     //const res = await fetch("https://api.p2pquake.net/v2/jma/quake?limit=50&offset=110&order=-1&since_date=20240101&until_date=20240101");
  
     const data = await res.json();
